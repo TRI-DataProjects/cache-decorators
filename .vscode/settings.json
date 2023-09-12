@@ -1,0 +1,17 @@
+{
+    "files.exclude": {
+        "**/.git": true,
+        "**/.venv": true,
+        "**/.pytest_cache": true,
+        "**/__pycache__/": true,
+        ".tox": true,
+        ".coverage": true,
+        ".hypothesis": true,
+        "**/~$*": true,
+        "poetry.lock": true
+    },
+    "python.analysis.typeCheckingMode": "basic",
+    "python.testing.pytestEnabled": true,
+    "black-formatter.importStrategy": "fromEnvironment",
+    "ruff.importStrategy": "fromEnvironment",
+}
