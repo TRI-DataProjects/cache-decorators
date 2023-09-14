@@ -5,13 +5,18 @@ import inspect
 import logging
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from errno import ENOENT
-from typing import TYPE_CHECKING, Any, Callable, ParamSpec
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Callable, ParamSpec, Protocol
 
 from filelock import FileLock
 
 if TYPE_CHECKING:
+    from hashlib import _Hash
     from pathlib import Path
+
+    from _typeshed import ReadableBuffer
 
 if sys.platform == "win32":
     from ctypes import WinError, windll
@@ -50,30 +55,70 @@ def hide_file(path: Path) -> Path:
     return path
 
 
+class PathTimeDelta(Protocol):
+    def __call__(self, path: Path) -> timedelta: ...
+
+
+def t_since_last_mod(path: Path) -> timedelta:
+    m_time = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    cur_time = datetime.now(tz=timezone.utc)
+    return cur_time - m_time
+
+
+def t_since_last_access(path: Path) -> timedelta:
+    a_time = datetime.fromtimestamp(path.stat().st_atime, tz=timezone.utc)
+    cur_time = datetime.now(tz=timezone.utc)
+    return cur_time - a_time
+
+
+def file_past_timeout(
+    path: Path,
+    timeout: int,
+    delta_func: PathTimeDelta = t_since_last_mod,
+) -> bool:
+    if not path.exists():
+        return True
+    if timeout < 0:
+        return False
+    elapsed = delta_func(path).seconds
+    return elapsed > timeout
+
+
 def get_filelock(target_file: Path, timeout: float = -1) -> FileLock:
     lock_file = target_file.parent / (target_file.name + ".lock")
     return FileLock(lock_file=lock_file, timeout=timeout)
 
 
-def hash_str(string: str) -> str:
-    return hashlib.md5(string.encode("utf-8"), usedforsecurity=False).hexdigest()
+class HashingProtocol(Protocol):
+    def __call__(
+        self,
+        string: ReadableBuffer = b"",
+        *,
+        usedforsecurity: bool = True,
+    ) -> _Hash: ...
 
 
-def hash_func(func: Callable) -> str:
+def hash_str(string: str, hasher: HashingProtocol = hashlib.sha256) -> str:
+    return hasher(string.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+
+@lru_cache
+def hash_func(func: Callable, hasher: HashingProtocol = hashlib.sha256) -> str:
     src = inspect.getsource(func)
-    return hashlib.md5(src.encode("utf-8"), usedforsecurity=False).hexdigest()
+    return hasher(src.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 P = ParamSpec("P")
 
 
+@lru_cache
 def bind_args_to_kwargs(
     func: Callable[P, Any],
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> dict[str, Any]:
     signature = inspect.signature(func)
-    bound_args = signature.bind(*args)
+    bound_args = signature.bind(*args, **kwargs)
     kw_out = bound_args.arguments | kwargs
     _LOGGER.debug(
         "Mapped '%s'(*%s,**%s) to '%s'(%s)",
