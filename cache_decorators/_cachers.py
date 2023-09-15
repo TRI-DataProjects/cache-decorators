@@ -1,23 +1,27 @@
 from __future__ import annotations
 
-import json
 import logging
 from abc import ABC, abstractmethod
 from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
-import ibis
+from public import public
 
+from ._protocols import (
+    FileReadWrite,
+    FileTimeoutDecider,
+    FileUpdateDecider,
+    Processor,
+    ReadWriteParquet,
+    UpdateDecider,
+)
 from ._utils import (
-    PathTimeDelta,
-    bind_args_to_kwargs,
-    file_past_timeout,
+    bind_to_kwargs,
     get_filelock,
     hash_func,
     hash_str,
     hide_file,
-    t_since_last_mod,
 )
 
 if TYPE_CHECKING:
@@ -33,34 +37,12 @@ R = TypeVar("R")
 
 _LOGGER = logging.getLogger("cache_decorators")
 _DEFAULT_DIR = (Path.cwd() / ".cache").resolve()
+public(_DEFAULT_DIR=_DEFAULT_DIR)
 _FORCE_UPDATE = False
+public(_FORCE_UPDATE=_FORCE_UPDATE)
 
 
-class UpdateDecider(Protocol):
-    def __call__(self, r_id: str, **kwargs) -> bool: ...  # noqa: ANN003
-
-
-class FileUpdateDecider(Protocol):
-    def __call__(self, target_resource: Path, **kwargs) -> bool: ...  # noqa: ANN003
-
-
-class Processor(Protocol):
-    def pre_process(self, data) -> Any: ...  # noqa: ANN001, ANN401
-    def post_process(self, tbl: Table) -> Table: ...
-
-
-class NoopProcessor(Processor):
-    def pre_process(self, data) -> Any:  # noqa: ANN001, ANN401
-        return data
-
-    def post_process(self, tbl: Table) -> Table:
-        return tbl
-
-
-class Validator(Protocol):
-    def __call__(self, func: Callable, **kwargs) -> None: ...
-
-
+@public
 class CacherBase(ABC):
     def __init__(
         self,
@@ -68,9 +50,9 @@ class CacherBase(ABC):
         processor: Processor | None = None,
     ) -> None:
         self._should_update = decider
-        self._processor = processor if processor is not None else NoopProcessor()
+        self._processor = processor
 
-    def decorate(
+    def __call__(
         self,
         func: Callable[P, R],  # type:ignore[reportInvalidTypeVarUse]
     ) -> Callable[P, Table]:
@@ -83,6 +65,16 @@ class CacherBase(ABC):
 
         decorated.__setattr__("uncache", uncache)
         return decorated
+
+    def _preprocess(self, data) -> Any:  # noqa: ANN001, ANN401
+        if not self._processor:
+            return data
+        return self._processor.preprocess(data)
+
+    def _postprocess(self, tbl: Table) -> Table:
+        if not self._processor:
+            return tbl
+        return self._processor.postprocess(tbl)
 
     @abstractmethod
     def _resource_context(
@@ -127,7 +119,7 @@ class CacherBase(ABC):
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> Table:
-        bound_kwargs = bind_args_to_kwargs(
+        bound_kwargs = bind_to_kwargs(
             func,
             *args,
             **kwargs,
@@ -135,11 +127,11 @@ class CacherBase(ABC):
         r_id = hash_str(repr({"*func*": hash_func(func)} | bound_kwargs))
         with self._resource_context(r_id):
             if _FORCE_UPDATE or self._should_update(r_id, **bound_kwargs):
-                data = self._processor.pre_process(
+                data = self._preprocess(
                     func(**bound_kwargs),  # type:ignore[reportGeneralTypeIssues]
                 )
                 self._write_cache(r_id, data)
-            return self._processor.post_process(self._read_cache(r_id))
+            return self._postprocess(self._read_cache(r_id))
 
     def do_uncache(
         self,
@@ -147,7 +139,7 @@ class CacherBase(ABC):
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> None:
-        bound_kwargs = bind_args_to_kwargs(
+        bound_kwargs = bind_to_kwargs(
             func,
             *args,
             **kwargs,
@@ -157,30 +149,7 @@ class CacherBase(ABC):
             self._uncache_resource(r_id)
 
 
-class FileReadWrite(Protocol):
-    @property
-    def file_extension(self) -> str: ...
-    def read_file(self, path: Path) -> Table: ...
-    def write_file(self, path: Path, data) -> None: ...  # noqa: ANN001
-
-
-class FileTimeoutDecider(FileUpdateDecider):
-    def __init__(
-        self,
-        timeout: int = -1,
-        delta_func: PathTimeDelta = t_since_last_mod,
-    ) -> None:
-        self.timeout = timeout
-        self.delta_func = delta_func
-
-    def __call__(self, target_resource: Path, **kwargs) -> bool:
-        return file_past_timeout(
-            target_resource,
-            self.timeout,
-            self.delta_func,
-        )
-
-
+@public
 class FileCacher(CacherBase):
     def __init__(
         self,
@@ -232,51 +201,3 @@ class FileCacher(CacherBase):
 
     def _uncache_resource(self, r_id: str) -> None:
         self._path_from_resource_id(r_id).unlink()
-
-
-class ReadWriteParquet(FileReadWrite):
-    @property
-    def file_extension(self) -> str:
-        return ".parquet"
-
-    def read_file(self, path: Path) -> Table:
-        return ibis.read_parquet(path)
-
-    def write_file(self, path: Path, data) -> None:  # noqa: ANN001
-        data.to_parquet(path)
-
-
-class ReadWriteCSV(FileReadWrite):
-    @property
-    def file_extension(self) -> str:
-        return ".csv"
-
-    def read_file(self, path: Path) -> Table:
-        return ibis.read_csv(path)
-
-    def write_file(self, path: Path, data) -> None:  # noqa: ANN001
-        data.to_csv(path)
-
-
-class ReadWriteDelta(FileReadWrite):
-    @property
-    def file_extension(self) -> str:
-        return ".delta"
-
-    def read_file(self, path: Path) -> Table:
-        return ibis.read_delta(path)
-
-    def write_file(self, path: Path, data) -> None:  # noqa: ANN001
-        data.to_delta(path)
-
-
-__all__ = [
-    "_DEFAULT_DIR",
-    "CacherBase",
-    "FileCacher",
-    "FileTimeoutDecider",
-    "FileReadWrite",
-    "ReadWriteParquet",
-    "ReadWriteCSV",
-    "ReadWriteDelta",
-]

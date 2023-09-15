@@ -112,16 +112,14 @@ P = ParamSpec("P")
 
 
 @lru_cache
-def bind_args_to_kwargs(
+def bind_to_kwargs(
     func: Callable[P, Any],
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> dict[str, Any]:
-    signature = inspect.signature(func)
-    bound_args = signature.bind(*args, **kwargs)
-    kw_out = bound_args.arguments | kwargs
+    kw_out = inspect.signature(func).bind(*args, **kwargs).arguments | kwargs
     _LOGGER.debug(
-        "Mapped '%s'(*%s,**%s) to '%s'(%s)",
+        "Bound '%s'(*%s,**%s) to '%s'(%s)",
         func.__name__,
         args,
         kwargs,
@@ -129,12 +127,3 @@ def bind_args_to_kwargs(
         kw_out,
     )
     return kw_out
-
-
-__all__ = [
-    "hide_file",
-    "get_filelock",
-    "hash_str",
-    "hash_func",
-    "bind_args_to_kwargs",
-]
