@@ -1,8 +1,8 @@
-> :warning: Decorated functions are hashed on their source with `insepct.getsource({func})`, meaning functions created at runtime (`lambda`) are not decorable.
+> :warning: Decorated functions are hashed on their source with [`insepct.getsource`](https://docs.python.org/3/library/inspect.html#inspect.getsource), meaning `lambda`'s or other `callable`'s without source code are not decorable.
 
-> :warning: All arguments of decorated functions are bound to their respective keyword argument via `inspect.signature({func}).bind(*{args}, **{kwargs})`
+> :warning: All arguments of decorated functions are bound to their respective keyword argument via [`inspect.Signature.bind`](https://docs.python.org/3/library/inspect.html#inspect.Signature.bind)
 
-> :warning: All arguments of decorated functions are hashed on their `__repr__()`
+> :warning: All arguments of decorated functions are hashed on their [`__repr__()`](https://docs.python.org/3/library/functions.html?highlight=repr#repr)
 
 ## As decorators
 
