@@ -4,11 +4,11 @@ import logging
 from abc import ABC, abstractmethod
 from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING
 
 from public import public
 
-from ._protocols import (
+from ._cache_protocols import (
     FileReadWrite,
     FileTimeoutDecider,
     FileUpdateDecider,
@@ -16,23 +16,19 @@ from ._protocols import (
     ReadWriteParquet,
     UpdateDecider,
 )
-from ._utils import (
-    bind_to_kwargs,
-    get_filelock,
-    hash_func,
-    hash_str,
-    hide_file,
-)
+from ._files import get_filelock, hide_file
+from ._hashing import hash_func, hash_str
+from ._inspection import bind_to_kwargs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from contextlib import AbstractContextManager
+    from typing import Any, ParamSpec, TypeVar
 
     from ibis.expr.types import Table
 
-
-P = ParamSpec("P")
-R = TypeVar("R")
+    P = ParamSpec("P")
+    R = TypeVar("R")
 
 
 _LOGGER = logging.getLogger("cache_decorators")
@@ -43,7 +39,7 @@ public(_FORCE_UPDATE=_FORCE_UPDATE)
 
 
 @public
-class CacherBase(ABC):
+class Cacher(ABC):
     def __init__(
         self,
         decider: UpdateDecider,
@@ -150,7 +146,7 @@ class CacherBase(ABC):
 
 
 @public
-class FileCacher(CacherBase):
+class FileCacher(Cacher):
     def __init__(
         self,
         cache_dir: Path | str | None = None,
@@ -176,7 +172,7 @@ class FileCacher(CacherBase):
         return cache_dir
 
     def _wrap_decider(self, fud: FileUpdateDecider) -> UpdateDecider:
-        def wrapper(r_id: str, **kwargs) -> bool:
+        def wrapper(r_id: str, **kwargs) -> bool:  # noqa: ANN003
             target_file = self._path_from_resource_id(r_id)
             return fud(target_file, **kwargs)
 

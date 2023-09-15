@@ -4,7 +4,7 @@
 
 > :warning: All arguments of decorated functions are hashed on their `__repr__()`
 
-## As Decorators
+## As decorators
 
 ```py
 from cache_decorators import FileCacher
@@ -13,9 +13,21 @@ from ibis.expr.types import Table
 
 # Creates (Path.cwd() / ".cache") if folder does not exist
 @FileCacher()
-def func_1(arg1: int, arg2: str) -> Table:
+def func_1(number: int, message: str) -> Table:
     # Some expensive or slow code
     ...
+
+
+# Runs expensive code and saves to cache
+f1_call_1 = func_1(1, "some str")
+# Retrieves data from cache
+f1_call_2 = func_1(1, message="some str")
+# Retrieves data from cache
+f1_call_3 = func_1(number=1, message="some str")
+# Runs expensive code and saves to cache
+f1_call_4 = func_1(1, "some other str")
+# Retrieves data from cache
+f1_call_5 = func_1(1, message="some other str")
 
 
 # Creates ("./some/other/dir") if folder does not exist
@@ -29,19 +41,12 @@ def func_2() -> Table:
 
 
 # Runs expensive code and saves to cache
-f1_call_1 = func_1(1, "some str")
-# Retrieves data from cache
-f1_call_2 = func_1(1, "some str")
-# Runs expensive code and saves to cache
-f1_call_3 = func_1(1, "some other str")
-
-# Runs expensive code and saves to cache
 f2_call_1 = func_2()
 # Retrieves data from cache
 f2_call_2 = func_2()
 ```
 
-## As Wrappers
+## As wrappers
 
 ```py
 from cache_decorators import FileCacher
@@ -70,11 +75,13 @@ import pandas
 from cache_decorators import FileCacher, FileComparisonDecider
 
 # Creates "my_cache_dir" if folder does not exist
-read_excel = FileCacher(
+my_read_excel = FileCacher(
     cache_dir="my_cache_dir",
     update_decider=FileComparisonDecider("io"),
 )(pandas.read_excel)
 
-
-my_data = pandas.read_excel(io="my_excel_file.xlsx")
+# Runs expensive code and saves to cache
+call_1 = my_read_excel("my_excel_file.xlsx")
+# Retrieves data from cache
+call_2 = my_read_excel(io="my_excel_file.xlsx")
 ```

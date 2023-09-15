@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-import hashlib
-import inspect
-import logging
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from errno import ENOENT
-from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Callable, ParamSpec, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from filelock import FileLock
 
 if TYPE_CHECKING:
-    from hashlib import _Hash
+    from datetime import timedelta
     from pathlib import Path
-
-    from _typeshed import ReadableBuffer
 
 if sys.platform == "win32":
     from ctypes import WinError, windll
@@ -33,9 +27,6 @@ if sys.platform == "win32":
             FILE_ATTRIBUTE_HIDDEN,
         ):
             raise WinError()
-
-
-_LOGGER = logging.getLogger("cache_decorators")
 
 
 def hide_file(path: Path) -> Path:
@@ -87,43 +78,3 @@ def file_past_timeout(
 def get_filelock(target_file: Path, timeout: float = -1) -> FileLock:
     lock_file = target_file.parent / (target_file.name + ".lock")
     return FileLock(lock_file=lock_file, timeout=timeout)
-
-
-class HashingProtocol(Protocol):
-    def __call__(
-        self,
-        string: ReadableBuffer = b"",
-        *,
-        usedforsecurity: bool = True,
-    ) -> _Hash: ...
-
-
-def hash_str(string: str, hasher: HashingProtocol = hashlib.sha256) -> str:
-    return hasher(string.encode("utf-8"), usedforsecurity=False).hexdigest()
-
-
-@lru_cache
-def hash_func(func: Callable, hasher: HashingProtocol = hashlib.sha256) -> str:
-    src = inspect.getsource(func)
-    return hasher(src.encode("utf-8"), usedforsecurity=False).hexdigest()
-
-
-P = ParamSpec("P")
-
-
-@lru_cache
-def bind_to_kwargs(
-    func: Callable[P, Any],
-    *args: P.args,
-    **kwargs: P.kwargs,
-) -> dict[str, Any]:
-    kw_out = inspect.signature(func).bind(*args, **kwargs).arguments | kwargs
-    _LOGGER.debug(
-        "Bound '%s'(*%s,**%s) to '%s'(%s)",
-        func.__name__,
-        args,
-        kwargs,
-        func.__name__,
-        kw_out,
-    )
-    return kw_out

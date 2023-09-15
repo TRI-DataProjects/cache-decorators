@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import ibis
 from public import public
 
-from ._utils import (
-    PathTimeDelta,
-    file_past_timeout,
-    t_since_last_mod,
-)
+from ._files import file_past_timeout, t_since_last_mod
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from ibis.expr.types import Table
+
+    from ._files import PathTimeDelta
+
+
+@public
+class Processor(Protocol):
+    def preprocess(self, data) -> Any: ...  # noqa: ANN001, ANN401
+    def postprocess(self, tbl: Table) -> Table: ...
 
 
 @public
@@ -54,12 +60,6 @@ class FileComparisonDecider(FileUpdateDecider):
         return (not target_resource.exists()) or (
             t_since_last_mod(input_file) < t_since_last_mod(target_resource)
         )
-
-
-@public
-class Processor(Protocol):
-    def preprocess(self, data) -> Any: ...  # noqa: ANN001, ANN401
-    def postprocess(self, tbl: Table) -> Table: ...
 
 
 @public
