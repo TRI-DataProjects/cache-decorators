@@ -57,11 +57,11 @@ class CacherBase(ABC):
         func: Callable[P, R],  # type:ignore[reportInvalidTypeVarUse]
     ) -> Callable[P, Table]:
         def uncache(*args: P.args, **kwargs: P.kwargs) -> None:
-            self.do_uncache(func, *args, **kwargs)
+            self._do_uncache(func, *args, **kwargs)
 
         @wraps(func)
         def decorated(*args: P.args, **kwargs: P.kwargs) -> Table:
-            return self.do_cache(func, *args, **kwargs)
+            return self._do_cache(func, *args, **kwargs)
 
         decorated.__setattr__("uncache", uncache)
         return decorated
@@ -113,7 +113,7 @@ class CacherBase(ABC):
     ) -> None:
         raise NotImplementedError
 
-    def do_cache(
+    def _do_cache(
         self,
         func: Callable[P, R],  # type:ignore[reportInvalidTypeVarUse]
         *args: P.args,
@@ -133,7 +133,7 @@ class CacherBase(ABC):
                 self._write_cache(r_id, data)
             return self._postprocess(self._read_cache(r_id))
 
-    def do_uncache(
+    def _do_uncache(
         self,
         func: Callable[P, R],  # type:ignore[reportInvalidTypeVarUse]
         *args: P.args,
@@ -176,7 +176,7 @@ class FileCacher(CacherBase):
         return cache_dir
 
     def _wrap_decider(self, fud: FileUpdateDecider) -> UpdateDecider:
-        def wrapper(r_id: str, **kwargs) -> bool:  # noqa: ANN003
+        def wrapper(r_id: str, **kwargs) -> bool:
             target_file = self._path_from_resource_id(r_id)
             return fud(target_file, **kwargs)
 
