@@ -76,5 +76,5 @@ read_excel = FileCacher(
 )(pandas.read_excel)
 
 
-my_data = read_excel(io="my_excel_file.xlsx")
+my_data = pandas.read_excel(io="my_excel_file.xlsx")
 ```
