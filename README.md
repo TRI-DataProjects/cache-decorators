@@ -1,72 +1,54 @@
-> :warning: All positional arguments of decorated functions mapped to their respective keyword argument
+> :warning: Decorated functions are hashed on their source with `insepct.getsource({func})`, meaning functions created at runtime (`lambda`) are not decorable.
+
+> :warning: All arguments of decorated functions are bound to their respective keyword argument via `inspect.signature({func}).bind(*{args}, **{kwargs})`
 
 > :warning: All arguments of decorated functions are hashed on their `__repr__()`
 
 ## As Decorators
 
-### Simple Functions
-
 ```py
-from cache_decorators import CacheDecoratorFactory
+from cache_decorators import FileCacher
 from ibis.expr.types import Table
 
+
 # Creates (Path.cwd() / ".cache") if folder does not exist
-my_decorator = CacheDecoratorFactory()
+@FileCacher()
+def func_1(arg1: int, arg2: str) -> Table:
+    # Some expensive or slow code
+    ...
+
+
+# Creates ("./some/other/dir") if folder does not exist
+my_decorator = FileCacher(cache_dir="./some/other/dir")
 
 
 @my_decorator
-def my_func() -> Table:
+def func_2() -> Table:
     # Some expensive or slow code
     ...
 
 
 # Runs expensive code and saves to cache
-call_1 = my_func()
+f1_call_1 = func_1(1, "some str")
 # Retrieves data from cache
-call_2 = my_func()
-```
-
-### File Reading Functions
-
-```py
-from cache_decorators import CachedFileReaderDecoratorFactory
-from ibis.expr.types import Table
-
-# Creates (Path.cwd() / ".cache") if folder does not exist
-my_decorator = CachedFileReaderDecoratorFactory(path_kwd="my_path")
-
-
-@my_decorator  # Expects "my_path" argument to be pathlike
-def my_reader(my_path: str, my_arg: int = 0) -> Table:
-    # Some expensive or slow code
-    ...
-
-
-input_file = "input_file.csv"
+f1_call_2 = func_1(1, "some str")
+# Runs expensive code and saves to cache
+f1_call_3 = func_1(1, "some other str")
 
 # Runs expensive code and saves to cache
-call_1 = my_reader(input_file)
+f2_call_1 = func_2()
 # Retrieves data from cache
-call_2 = my_reader(input_file, 0)
-# Runs expensive code and saves to cache
-call_3 = my_reader(input_file, 1)
-# Retrieves data from cache
-call_4 = my_reader(my_path=input_file, my_arg=0)
-# Retrieves data from cache
-call_5 = my_reader(my_path=input_file, my_arg=1)
+f2_call_2 = func_2()
 ```
-
 
 ## As Wrappers
 
-### Simple Functions
-
 ```py
-from cache_decorators import CacheDecoratorFactory
+from cache_decorators import FileCacher
 from some_library import external_function
 
 # Creates (Path.cwd() / ".cache") if folder does not exist
-my_decorator = CacheDecoratorFactory()
+my_decorator = FileCacher()
 
 
 decorated_function = my_decorator(external_function)
@@ -76,27 +58,23 @@ decorated_function = my_decorator(external_function)
 call_1 = decorated_function("my_arg")
 # Retrieves data from cache
 call_2 = decorated_function("my_arg")
+# Runs expensive code and saves to cache
+call_3 = decorated_function("new_arg")
 ```
+## Real world use
 
-
-### File Reading Functions
+After the first run, subsequent runs of the following code will not have to read the `my_excel_file.xlsx` file directly, and will instead prefer to read from the cached file. If `my_excel_file.xlsx` is updated, it will be re-cached when requested.
 
 ```py
-import pandas as pd
-from cache_decorators import CachedFileReaderDecoratorFactory
+import pandas
+from cache_decorators import FileCacher, FileComparisonDecider
 
-# Creates (Path.cwd() / ".cache") if folder does not exist
-my_decorator = CachedFileReaderDecoratorFactory(path_kwd="io")
-decorated_function = my_decorator(pd.read_excel)
+# Creates "my_cache_dir" if folder does not exist
+read_excel = FileCacher(
+    cache_dir="my_cache_dir",
+    update_decider=FileComparisonDecider("io"),
+)(pandas.read_excel)
 
-input_file = "input_file.xlsx"
 
-# Runs expensive code and saves to cache
-call_1 = decorated_function(input_file, "sheet 1")
-# Retrieves data from cache
-call_2 = decorated_function(io=input_file, sheet_name="sheet 1")
-# Runs expensive code and saves to cache
-call_3 = decorated_function(input_file, "sheet 2")
-# Retrieves data from cache
-call_4 = decorated_function(io=input_file, sheet_name="sheet 2")
+my_data = read_excel(io="my_excel_file.xlsx")
 ```
